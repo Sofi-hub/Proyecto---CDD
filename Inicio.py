@@ -81,6 +81,7 @@ def login_view():
                 }
             else:
                 st.error("Email o contraseña incorrectos.")
+
     with col2:
         st.button("Registrarse", on_click=go_to_register)
 
