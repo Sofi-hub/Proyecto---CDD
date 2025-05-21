@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 import os
 import pandas as pd
+from psycopg2.extras import RealDictCursor
 
 def vista_vecino():
     """Formulario de denuncia (imagen opcional)."""
@@ -96,3 +97,35 @@ def vista_autoridad():
         else:
             st.error("ID no encontrado.")
         cur.close()
+
+def execute_query(query, conn, is_select=False, params=None):
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+            cursor.execute(query, params)
+            if is_select:
+                result = cursor.fetchall()
+                return pd.DataFrame(result)
+            else:
+                conn.commit()
+                return None
+    except Exception as e:
+        print(f"Error executing query: {e}")
+        return pd.DataFrame() if is_select else None
+
+def add_employee(nombre, dni, telefono, fecha_contratacion, salario):
+    """
+    Adds a new employee to the Empleado table.
+    """
+
+    query = "INSERT INTO empleado (nombre, dni, telefono, fecha_contratacion, salario) VALUES (%s, %s, %s, %s, %s)"
+    params = (nombre, dni, telefono, fecha_contratacion, salario)
+    
+    return execute_query(query, params=params, is_select=False)
+
+def show_denuncias():
+    """
+    Fetches and displays all denuncias from the Denuncia table.
+    """
+    query = "SELECT * FROM denuncia"
+    return execute_query(query, is_select=True)
+

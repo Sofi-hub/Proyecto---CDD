@@ -20,6 +20,7 @@ if "view" not in st.session_state:
 if "usuario" not in st.session_state:
     st.session_state.usuario = None
 
+<<<<<<< HEAD
 # --- Función de Login / Registro ---
 def pantalla_login():
     st.title("Mi Reporte")
@@ -39,6 +40,56 @@ def pantalla_login():
                         "tipo": res[2]
                     }
                     st.rerun()
+=======
+# --- CALLBACKS ---
+def go_to_register():
+    st.session_state.current_view = "register"
+
+def go_to_login():
+    st.session_state.current_view = "login"
+
+# --- VISTA: LOGIN ---
+def login_view():
+    st.subheader("Iniciar Sesión")
+
+    email = st.text_input("Correo electrónico", key="login_email")
+    password = st.text_input("Contraseña", type="password", key="login_password")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if st.button("Ingresar"):
+            usuario = verificar_usuario(email, password)
+            if usuario:
+                st.session_state.logged_in = True
+                st.session_state.usuario = {
+                    "id": usuario[0],
+                    "nombre": usuario[1],
+                    "tipo": usuario[2],
+                    "email": email
+                }
+            else:
+                st.error("Email o contraseña incorrectos.")
+
+    with col2:
+        st.button("Registrarse", on_click=go_to_register)
+
+# --- VISTA: REGISTRO ---
+def register_view():
+    st.subheader("Registrarse")
+
+    nombre = st.text_input("Nombre completo", key="reg_nombre")
+    email = st.text_input("Correo electrónico", key="reg_email")
+    password = st.text_input("Contraseña", type="password", key="reg_password")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        if st.button("Crear cuenta"):
+            if nombre and email and password:
+                exito, mensaje = registrar_usuario(nombre, email, password)
+                if exito:
+                    st.success(mensaje)
+                    go_to_login()
+>>>>>>> 5e2096c807d45faa2d42a30bf6a20e9eb22beef6
                 else:
                     st.error("Email o contraseña incorrectos.")
         with col2:
