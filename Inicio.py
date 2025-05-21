@@ -9,6 +9,75 @@ import pydeck as pdk
 from shared import get_connection, verificar_usuario, registrar_usuario
 from streamlit_option_menu import option_menu
 
+
+CALLES_PILAR = [
+    "11 de Septiembre", "25 de Mayo", "3 de Febrero", "9 de Julio", "A Lincoln", "A Vattuone", "Aconcagua",
+    "Agustin Alvarez", "Agustoni", "Alberdi", "Alte G Brown", "Alte H Garcia Mansilla", "Americo Vespucio",
+    "Ana Maria Mogas", "Antartida Argentina", "Antonio Bermudez", "Antonio Freixas", "Antonio Vieyra",
+    "Apolinario Lubo", "Araoz de Lamadrid", "Argerich", "Armando Ferreyra", "Arrecifes", "Arturo Beruti",
+    "Azcuenaga", "Azul", "Balcarce", "Basilio Musladini", "Bdier Gral J Zapiola", "Bdier J M de Rosas",
+    "Beato Marcelino Champagnat", "Bergantin Balcarce", "Bergantin Congreso", "Bergantin Independ",
+    "Bergantin Republica", "Bernardino Rivadavia", "Bogota", "Bolivia", "Bragado", "Brasil", "Buenos Aires",
+    "Callao", "Camarones", "Camilo Costa", "Canada", "Cañonera Tortuga", "Cañuelas", "Caracas", "Carhue",
+    "Carlos Calvo", "Carmen de Areco", "Casacuberta", "Catamarca", "Chacabuco", "Chaco", "Chascomus", "Chile",
+    "Chivilcoy", "Chubut", "Cmte Luis Piedrabuena", "Cnel Baltazar Cardenas", "Cnel M Chilavert",
+    "Cnel Pedro J Diaz", "Colombia", "Conrado Nale Roxlo", "Corbeta Belfast", "Corbeta Cefiro",
+    "Corbeta Rosales", "Corbeta Uruguay", "Cordoba", "Costa Rica", "Cristian Rauch", "Cristobal Colon",
+    "Crucero Gral Belgrano", "Cuarenta Leguas", "Cuba", "Daireaux", "Dardo Rocha", "De la Visitacion",
+    "Dolores", "Domingo F Sarmiento", "Domingo French", "Dr A Alsina", "Dr Alejandro Korn",
+    "Dr Bernardo Houssay", "Dr Ignacio Pirovano", "Dr Jose Ingenieros", "Dr Juan Jose Paso", "Dr Luis Agote",
+    "Dr Luis Belaustegui", "Dr Luis Pasteur", "Dr Osvaldo Eguia", "Dr Pedro Narciso Arata", "Dr Pelagio B Luna",
+    "Dr Penna", "Dr Ricardo Levenne", "Dr Romulo s Naon", "Dr Velez Sarsfield", "Ecuador", "El Boyero",
+    "El Cardenal", "El Ceibo", "El Chingolo", "El Colibri", "El Hornero", "El Jilguero", "El Lucero",
+    "El Mirlo", "El Ñandu", "El Peteribi", "El Petrel", "El Rincon", "El Tordo", "El Zorzal", "Ensenada",
+    "Ernesto Nazarre", "Ernesto Tornquist", "Escobar", "Estados Unidos", "Estanislao Lopez",
+    "Estanislao Zeballos", "Esteban de Luca", "Esteban Echeverria", "Eva Peron", "Evaristo Carriego",
+    "Exaltacion de la Cruz", "Feliciano Chiclana", "Felix de Olazabal", "Fermin Gamboa", "Fgta Hercules",
+    "Fgta Heroina", "Fgta la Argentina", "Fgta Pte Sarmiento", "Fitz Roy", "Florentino Ameghino", "Formosa",
+    "Fortez", "Fragata Trinidad", "Francisco de Laprida", "Francisco Lauria", "Francisco Pizarro",
+    "Fray Luis Beltran", "Gaboto", "Gdero Baigorria", "George Washington", "Goleta Constitucion",
+    "Goleta Juliet", "Goleta Rio", "Goleta Sarandi", "Gral Francisco Ramirez", "Gral Guemes",
+    "Gral Jose G Artigas", "Gral Jose M Bustillo", "Gral Jose Maria Paz", "Gral Juan Jose Viamonte",
+    "Gral Juan M de Pueyrredon", "Gral las Heras", "Gral M Soler", "Gral Manuel Belgrano",
+    "Gral Mariano Acha", "Gral Mariano Necochea", "Gral O Higgins", "Gral San Martin", "Gral Simon Bolivar",
+    "Gral Tomas Guido", "Gregorio de Laferrere", "Guatemala", "Haiti", "Hernan Cortez", "Hernandarias",
+    "Hernando de Magallanes", "Hilario Ascasubi", "Hipolito Bouchard", "Honduras", "Honorio Leguizamon",
+    "Independencia", "Ing Guillermo Marconi", "Isla de los Estados", "Isla Lennox", "Isla Nueva",
+    "Isla Picton", "Islas Malvinas", "Ituzaingo", "J de Garay", "Joaquin V Gonzalez", "Jorge Manfredi",
+    "Jose C Paz", "Jose Garibaldi", "Jose Hernandez", "Jose Marmol", "Juan Bautista Justo",
+    "Juan Diaz de Solis", "Juan Domingo Peron", "Juan Hipolito Vieytes", "Juan Jose Castelli",
+    "Juan Sanguinetti", "Jujuy", "Junin", "La Carreta", "La Garza", "La Gaviota", "La Golondrina",
+    "La Martineta", "La Paz", "La Perdiz", "La Rioja", "La Tapera", "La Tijereta", "La Torcaza",
+    "Lago Alumine", "Lago Argentino", "Lago Cardiel", "Lago Clhue Huapi", "Lago Fagnano", "Lago Lacar",
+    "Lago Mascardi", "Lago Nahuel Huapi", "Lago Traful", "Lago Viedma", "Laguna Chascomus",
+    "Laguna de Monte", "Lanin", "Las Alondras", "Las Glicinas", "Las Lomas", "Las Madreselvas",
+    "Las Margaritas", "Las Palomas", "Las Piedras", "Las Rosas", "Las Truchas", "Las Violetas",
+    "Leopoldo Lugones", "Lisandro de la Torre", "Lizaso", "Loberia", "Lobos", "Lorenzo Lopez", "Los Alamos",
+    "Los Arrayanes", "Los Claveles", "Los Gorriones", "Los Jazmines", "Los Lirios", "Los Naranjos",
+    "Los Nomeolvides", "Los Patos", "Los Sauces", "Los Teros", "Los Tulipanes", "Lucio V Mansilla",
+    "Luis Bataglia", "Luis Lagomarsino", "Lujan", "Magdalena", "Maipu", "Manantial", "Manuel Buide",
+    "Manuel de Sarratea", "Manuel Martignone", "Manuel Martitegui", "Marcos Juarez", "Maria Cabezas",
+    "Mariano Acosta", "Martin Coronado", "Martin de Gainza", "Medanos", "Mendoza", "Mercedario", "Mercedes",
+    "Mexico", "Miguel Cane", "Miguel de Unamuno", "Misiones", "Mons Miguel de Andrea", "Montevideo",
+    "Moreno", "Navarro", "Neuquen", "Nicaragua", "Olavarria", "Olegario V Andrade", "Oliverio Girondo",
+    "Ottawa", "Pampa", "Panama", "Panamericana", "Paraguay", "Parana", "Patagones", "Patricias Argentinas",
+    "Pbto Silvio Braschi", "Pedro B Palacios", "Pedro Cabral", "Pedro de Mendoza", "Pedro Lagrave",
+    "Pergamino", "Peru", "Pigue", "Pilar", "Posadas", "Pres Gral J A Roca", "Pte H Yrigoyen", "Pte J D Peron",
+    "Pte M T de Alvear", "Puan", "R Saenz Peña", "Rastreador Fournier", "Ricardo Guiraldes", "Ricardo Rojas",
+    "Rio de Janeiro", "Rio Negro", "Rio Primero", "Rio Segundo", "Rio Tercero", "Rn 8", "Roberto Arlt",
+    "Ruta 25", "Ruta 8", "Ruta Prov 25", "Ruta Prov 28", "Ruta Prov. 34", "Saladillo", "Saliquelo", "Salta",
+    "San Jorge", "San Lorenzo", "San Luis", "San Pedro", "San Salvador", "Santa Agueda", "Santa Fe",
+    "Santa Maria", "Santiago de Liniers", "Santiago del Estero", "Santo Domingo", "Saravi", "Sebastian Elcano",
+    "Sgto Juan B Cabral", "Suipacha", "T M de Anchorena", "Tandil", "Tierra del Fuego", "Tomas Marquez",
+    "Tratado del Pilar", "Tres Arroyos", "Tronador", "Tucuman", "Tupungato", "Uriburu", "Urquiza", "Uruguay",
+    "Vasco Da Gama", "Vedia", "Venancio Castro", "Venezuela", "Viamonte", "Victor V Vergani",
+    "Virrey Joaquin del Pino", "Virrey Loreto", "Vuelta de Obligado", "Yapeyu"
+]
+
+Barrios = ["Zelaya","Villa Rosa","Luis Lagomarsino","Del Viso","Manuel Alberti","La Lonja","Presidente Derqui","Villa Astolfi","Manzone","Pilar",
+    "Pilar Sur","San Francisco","Champagnat","Fátima","Manzanares"]
+
+
 # --- Configuración de la app ---
 st.set_page_config(page_title="Mi Reporte", layout="wide")
 
@@ -20,88 +89,43 @@ if "view" not in st.session_state:
 if "usuario" not in st.session_state:
     st.session_state.usuario = None
 
-<<<<<<< HEAD
 # --- Función de Login / Registro ---
+# --- Función principal de login / registro ---
 def pantalla_login():
     st.title("Mi Reporte")
+
     if st.session_state.view == "login":
         st.subheader("🔐 Iniciar sesión")
-        email = st.text_input("Correo electrónico", key="in_email")
-        pwd   = st.text_input("Contraseña", type="password", key="in_pwd")
-        col1, col2 = st.columns([2,1])
+        email = st.text_input("Correo electrónico", key="login_email")
+        pwd = st.text_input("Contraseña", type="password", key="login_pwd")
+
+        col1, col2 = st.columns([2, 1])
         with col1:
             if st.button("Ingresar"):
-                res = verificar_usuario(email, pwd)
-                if res:
+                usuario = verificar_usuario(email, pwd)
+                if usuario:
                     st.session_state.logged_in = True
                     st.session_state.usuario = {
-                        "id": res[0],
-                        "nombre": res[1],
-                        "tipo": res[2]
+                        "id": usuario[0],
+                        "nombre": usuario[1],
+                        "tipo": usuario[2],
+                        "email": email
                     }
                     st.rerun()
-=======
-# --- CALLBACKS ---
-def go_to_register():
-    st.session_state.current_view = "register"
-
-def go_to_login():
-    st.session_state.current_view = "login"
-
-# --- VISTA: LOGIN ---
-def login_view():
-    st.subheader("Iniciar Sesión")
-
-    email = st.text_input("Correo electrónico", key="login_email")
-    password = st.text_input("Contraseña", type="password", key="login_password")
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if st.button("Ingresar"):
-            usuario = verificar_usuario(email, password)
-            if usuario:
-                st.session_state.logged_in = True
-                st.session_state.usuario = {
-                    "id": usuario[0],
-                    "nombre": usuario[1],
-                    "tipo": usuario[2],
-                    "email": email
-                }
-            else:
-                st.error("Email o contraseña incorrectos.")
-
-    with col2:
-        st.button("Registrarse", on_click=go_to_register)
-
-# --- VISTA: REGISTRO ---
-def register_view():
-    st.subheader("Registrarse")
-
-    nombre = st.text_input("Nombre completo", key="reg_nombre")
-    email = st.text_input("Correo electrónico", key="reg_email")
-    password = st.text_input("Contraseña", type="password", key="reg_password")
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        if st.button("Crear cuenta"):
-            if nombre and email and password:
-                exito, mensaje = registrar_usuario(nombre, email, password)
-                if exito:
-                    st.success(mensaje)
-                    go_to_login()
->>>>>>> 5e2096c807d45faa2d42a30bf6a20e9eb22beef6
                 else:
                     st.error("Email o contraseña incorrectos.")
         with col2:
             if st.button("Registrarse"):
                 st.session_state.view = "register"
+                st.rerun()
 
-    else:  # registro
+    elif st.session_state.view == "register":
         st.subheader("📝 Registrarse")
-        nombre = st.text_input("Nombre completo", key="reg_name")
-        email  = st.text_input("Correo electrónico", key="reg_email")
-        pwd    = st.text_input("Contraseña", type="password", key="reg_pwd")
-        col1, col2 = st.columns([2,1])
+        nombre = st.text_input("Nombre completo", key="reg_nombre")
+        email = st.text_input("Correo electrónico", key="reg_email")
+        pwd = st.text_input("Contraseña", type="password", key="reg_pwd")
+
+        col1, col2 = st.columns([2, 1])
         with col1:
             if st.button("Crear cuenta"):
                 if nombre and email and pwd:
@@ -109,6 +133,7 @@ def register_view():
                     if ok:
                         st.success(msg)
                         st.session_state.view = "login"
+                        st.rerun()
                     else:
                         st.error(msg)
                 else:
@@ -116,6 +141,16 @@ def register_view():
         with col2:
             if st.button("Volver"):
                 st.session_state.view = "login"
+                st.rerun()
+
+
+# --- CALLBACKS ---
+def go_to_register():
+    st.session_state.current_view = "register"
+
+def go_to_login():
+    st.session_state.current_view = "login"
+
 
 # --- Vista Vecino: Mis denuncias con filtros ---
 def mostrar_mi_cuenta():
@@ -170,9 +205,9 @@ def publicar_denuncia():
     descripcion = st.text_area("Descripción del problema")
     categoria   = st.selectbox("Categoría", ["Tránsito","Basura","Señalización","Delito","Otro"])
     imagen      = st.file_uploader("Subir imagen (opcional)", type=["jpg","jpeg","png"])
-    calle       = st.text_input("Calle")
+    calle       = st.selectbox("Calle", CALLES_PILAR)
     altura      = st.number_input("Altura", min_value=0)
-    barrio      = st.text_input("Barrio")
+    barrio      = st.selectbox("Barrio", Barrios)
 
     if st.button("Enviar Denuncia"):
         if not (descripcion and categoria and calle and altura and barrio):

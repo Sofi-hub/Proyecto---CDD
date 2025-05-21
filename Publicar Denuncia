@@ -1,0 +1,11 @@
+import streamlit as st
+from functions import vista_vecino
+
+st.title("Publicar denuncia")
+
+if not st.session_state.get("logged_in", False):
+    st.warning("Primero iniciá sesión en Inicio.")
+elif st.session_state.usuario["tipo"] != "vecino":
+    st.error("Solo vecinos pueden publicar denuncias.")
+else:
+    vista_vecino()
