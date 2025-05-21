@@ -1,0 +1,7 @@
+[theme]
+base                    = "dark"               # activa tema oscuro
+primaryColor            = "#3498db"            # color de acento
+backgroundColor         = "#303030"            # gris oscuro de fondo
+secondaryBackgroundColor= "#424242"            # gris contenedores
+textColor               = "#e0e0e0"            # gris claro para texto
+font                    = "sans serif"

@@ -12,39 +12,6 @@ from streamlit_option_menu import option_menu
 # --- Configuración de la app ---
 st.set_page_config(page_title="Mi Reporte", layout="wide")
 
-import streamlit as st
-import base64
-
-# — Función para incrustar fondo en base64 —
-def set_background(png_file):
-    with open(png_file, "rb") as f:
-        b64 = base64.b64encode(f.read()).decode()
-    st.markdown(
-        f"""
-        <style>
-        .stApp {{
-            background-image: url("data:image/png;base64,{b64}");
-            background-size: cover;
-            background-position: center;
-        }}
-        /* Para que el contenido destaque sobre el fondo */
-        .block-container {{
-            background-color: rgba(255,255,255,0.85) !important;
-            border-radius: 8px;
-            padding: 2rem;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-# — Ejecutamos la función —
-set_background("background.png")
-
-# — Mostramos tu logo encima —
-st.image("logo.png", width=180)
-
-
 # --- Inicialización de session_state ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
