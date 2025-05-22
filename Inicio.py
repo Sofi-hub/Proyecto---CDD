@@ -450,6 +450,46 @@ def ver_denuncias_autoridad():
             st.error("ID no encontrado.")
         cur.close()
 
+def ver_mapa_calor():
+    st.subheader("Mapa de calor de denuncias")
+    conn = get_connection()
+
+    # Traer coordenadas y categoría/localidad
+    df = pd.read_sql(
+        """
+        SELECT d.id_denuncia, d.categoria, ub.localidad, ub.latitud, ub.longitud
+        FROM denuncia d
+        JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
+        WHERE ub.latitud IS NOT NULL AND ub.longitud IS NOT NULL
+        """,
+        conn
+    )
+
+    # --- Filtros en la barra lateral ---
+    st.sidebar.markdown("### Filtros del mapa")
+
+    categorias = sorted(df["categoria"].dropna().unique())
+    categorias_sel = st.sidebar.multiselect("Categorías", categorias, default=categorias)
+
+    localidades = sorted(df["localidad"].dropna().unique())
+    localidades_sel = st.sidebar.multiselect("Localidades", localidades, default=localidades)
+
+    # --- Aplicar filtros ---
+    df_f = df[
+        (df["categoria"].isin(categorias_sel)) &
+        (df["localidad"].isin(localidades_sel))
+    ]
+
+    # --- Crear mapa ---
+    m = folium.Map(location=[-34.45, -58.91], zoom_start=12)
+
+    puntos = df_f[["latitud", "longitud"]].values.tolist()
+    if puntos:
+        HeatMap(puntos, radius=15).add_to(m)
+    else:
+        st.warning("No hay denuncias con ubicación que coincidan con los filtros.")
+
+    st_folium(m, height=600)
 
 
 # --- Flujo principal ---
@@ -479,14 +519,16 @@ if st.session_state.logged_in:
     else:  # autoridad
         choice = option_menu(
             menu_title=None,
-            options=["Ver denuncias"],
-            icons=["clipboard-check"],
+            options=["Ver denuncias", "Mapa de calor"],
+            icons=["clipboard-check", "map"],
             default_index=0,
             orientation="vertical",
             key="menu_autoridad"
         )
         if choice == "Ver denuncias":
             ver_denuncias_autoridad()
+        elif choice == "Mapa de calor":
+            ver_mapa_calor()
 
 else:
     pantalla_login()
