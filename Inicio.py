@@ -211,28 +211,7 @@ def publicar_denuncia():
     categoria = st.selectbox("Categoría", ["Tránsito", "Basura", "Señalización", "Delito", "Otro"])
     imagen = st.file_uploader("Subir imagen (opcional)", type=["jpg", "jpeg", "png"])
 
-    # --- Inicializar valores en session_state si no existen
-    for campo in ["calle_auto", "altura_auto", "barrio_auto"]:
-        if campo not in st.session_state:
-            st.session_state[campo] = None
-
-    # --- Función de reverse geocoding
-    def reverse_geocode_osm(lat, lon):
-        url = "https://nominatim.openstreetmap.org/reverse"
-        params = {"lat": lat, "lon": lon, "format": "json"}
-        headers = {"User-Agent": "MiReporteApp/1.0"}
-        try:
-            res = requests.get(url, params=params, headers=headers).json()
-            calle = res.get("address", {}).get("road")
-            altura = res.get("address", {}).get("house_number")
-            barrio = res.get("address", {}).get("suburb") or res.get("address", {}).get("city_district")
-            return calle, altura, barrio
-        except:
-            return None, None, None
-
-    # --- Mapa
     st.markdown("### 📍 Marcar ubicación y completar dirección")
-
     col1, col2 = st.columns([2, 3])
 
     with col1:
@@ -246,78 +225,92 @@ def publicar_denuncia():
     if output["last_clicked"]:
         lat_sel = output["last_clicked"]["lat"]
         lon_sel = output["last_clicked"]["lng"]
-        st.success(f"Ubicación marcada: {lat_sel:.5f}, {lon_sel:.5f}")
 
-        calle_auto, altura_auto, barrio_auto = reverse_geocode_osm(lat_sel, lon_sel)
-        if altura_auto:
-            altura_auto = str(altura_auto)
+        # Geocodificación inversa
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params = {"lat": lat_sel, "lon": lon_sel, "format": "json"}
+        headers = {"User-Agent": "MiReporteApp/1.0"}
+        try:
+            res = requests.get(url, params=params, headers=headers).json()
+            calle_auto = res.get("address", {}).get("road")
+            altura_auto = res.get("address", {}).get("house_number")
+            if altura_auto:
+                altura_auto = str(altura_auto)
+            barrio_auto = res.get("address", {}).get("suburb") or res.get("address", {}).get("city_district")
+        except:
+            st.error("No se pudo obtener la dirección desde el mapa.")
     else:
         st.warning("📍 Marcá la ubicación en el mapa para completar la dirección.")
         return
 
     with col2:
-        st.markdown("### 📝 Ubicación del problema")
-        st.text_input("Calle detectada automáticamente", value=calle_auto or "", disabled=True)
+        st.success(f"Ubicación marcada: {lat_sel:.5f}, {lon_sel:.5f}")
+        st.markdown("### Ubicación del problema")
+
+        st.text_input("Calle detectada automáticamente", value=calle_auto or "", disabled=True, key="calle_auto")
         calle = calle_auto
-        altura_str = st.text_input("Altura", value=altura_auto or "")
-        opciones_barrios = ["Seleccioná una localidad"] + Barrios
+
+        altura_str = st.text_input("Altura (solo números)", value=altura_auto or "", key="altura_input")
+        try:
+            altura = int(altura_str.strip())
+        except:
+            altura = None
+
+        opciones_barrios =  Barrios
         if barrio_auto in Barrios:
             idx_barrio = Barrios.index(barrio_auto) + 1
         else:
             idx_barrio = 0
-        barrio = st.selectbox("Localidad", opciones_barrios, index=idx_barrio)
+        barrio = st.selectbox("Seleccione una localidad", opciones_barrios, index=idx_barrio, key="barrio_input")
 
-    # --- Enviar
-    if st.button("Enviar Denuncia"):
-        if not (descripcion and categoria and calle and barrio != "Seleccioná una localidad" and altura is not None and lat_sel and lon_sel):
-            st.error("Completá todos los campos obligatorios y marcá la ubicación en el mapa.")
-            return
+        if st.button("Enviar Denuncia"):
+            if not (descripcion and categoria and calle and barrio != "Seleccioná una localidad" and altura is not None and lat_sel and lon_sel):
+                st.error("Completá todos los campos obligatorios y marcá la ubicación en el mapa.")
+            else:
+                conn = get_connection()
+                cur = conn.cursor()
 
-        conn = get_connection()
-        cur = conn.cursor()
+                cur.execute(
+                    "INSERT INTO ubicacion (calle, altura, barrio, latitud, longitud) VALUES (%s, %s, %s, %s, %s) RETURNING id_ubicacion",
+                    (calle, altura, barrio, lat_sel, lon_sel)
+                )
+                id_ub = cur.fetchone()[0]
 
-        cur.execute(
-            "INSERT INTO ubicacion (calle, altura, barrio, latitud, longitud) VALUES (%s, %s, %s, %s, %s) RETURNING id_ubicacion",
-            (calle, altura, barrio, lat_sel, lon_sel)
-        )
-        id_ub = cur.fetchone()[0]
+                cur.execute(
+                    "INSERT INTO seguimiento (id_usuario, estado) VALUES (%s, 'pendiente') RETURNING id_seguimiento",
+                    (st.session_state.usuario["id"],)
+                )
+                id_seg = cur.fetchone()[0]
 
-        cur.execute(
-            "INSERT INTO seguimiento (id_usuario, estado) VALUES (%s, 'pendiente') RETURNING id_seguimiento",
-            (st.session_state.usuario["id"],)
-        )
-        id_seg = cur.fetchone()[0]
+                now = datetime.now()
+                cur.execute(
+                    """
+                    INSERT INTO denuncia (id_usuario, id_ubicacion, categoria, descripcion, fecha_hora, id_seguimiento)
+                    VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_denuncia
+                    """,
+                    (st.session_state.usuario["id"], id_ub, categoria, descripcion, now, id_seg)
+                )
+                id_den = cur.fetchone()[0]
 
-        now = datetime.now()
-        cur.execute(
-            """
-            INSERT INTO denuncia (id_usuario, id_ubicacion, categoria, descripcion, fecha_hora, id_seguimiento)
-            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_denuncia
-            """,
-            (st.session_state.usuario["id"], id_ub, categoria, descripcion, now, id_seg)
-        )
-        id_den = cur.fetchone()[0]
+                if imagen:
+                    img_id = str(uuid4())
+                    img_path = f"imagenes/{img_id}.png"
+                    os.makedirs("imagenes", exist_ok=True)
+                    with open(img_path, "wb") as f:
+                        f.write(imagen.read())
+                    cur.execute(
+                        """
+                        INSERT INTO imagen (id_denuncia, url_imagen, fecha_subida, descripcion)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (id_den, img_path, now, "Imagen de denuncia")
+                    )
 
-        if imagen:
-            img_id = str(uuid4())
-            img_path = f"imagenes/{img_id}.png"
-            os.makedirs("imagenes", exist_ok=True)
-            with open(img_path, "wb") as f:
-                f.write(imagen.read())
-            cur.execute(
-                """
-                INSERT INTO imagen (id_denuncia, url_imagen, fecha_subida, descripcion)
-                VALUES (%s, %s, %s, %s)
-                """,
-                (id_den, img_path, now, "Imagen de denuncia")
-            )
+                conn.commit()
+                cur.close()
+                st.success("✅ Denuncia enviada correctamente.")
 
-        conn.commit()
-        cur.close()
-        st.success("✅ Denuncia enviada correctamente.")
-        st.session_state.calle_auto = None
-        st.session_state.altura_auto = None
-        st.session_state.barrio_auto = None
+
 
 
 
