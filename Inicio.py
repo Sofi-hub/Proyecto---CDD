@@ -213,7 +213,7 @@ def publicar_denuncia():
     st.subheader("📢 Publicar nueva denuncia")
 
     descripcion = st.text_area("Descripción del problema")
-    categoria = st.selectbox("Categoría", ["Tránsito", "Basura", "Señalización", "Delito", "Ruidos molestos", "Vandalismo", "Otro"])
+    categoria = st.selectbox("Categoría", ["Tránsito", "Obstrucción vía pública","Iluminación","Basura", "Señalización", "Delito", "Ruidos molestos", "Vandalismo", "Deterioro vial","Otro"])
     imagen = st.file_uploader("Subir imagen (opcional)", type=["jpg", "jpeg", "png"])
 
     st.markdown("### 📍 Marcar ubicación y completar dirección")
@@ -255,11 +255,15 @@ def publicar_denuncia():
         st.text_input("Calle detectada automáticamente", value=calle_auto or "", disabled=True, key="calle_auto")
         calle = calle_auto
 
-        altura_str = st.text_input("Altura (solo números)", value=altura_auto or "", key="altura_input")
-        try:
-            altura = int(altura_str.strip())
-        except:
+        altura_str = st.text_input("Altura (opcional)", value=altura_auto or "", key="altura_input")
+       # Validación manual
+        if altura_str.strip() == "":
             altura = None
+        elif altura_str.strip().isdigit():
+            altura = int(altura_str.strip())
+        else:
+            st.error("La altura debe contener solo números o dejarse vacía.")
+            return  # corta el flujo sin intentar guardar nada
 
         opciones_barrios =  Barrios
         if barrio_auto in Barrios:
@@ -269,7 +273,7 @@ def publicar_denuncia():
         barrio = st.selectbox("Seleccione una localidad", opciones_barrios, index=idx_barrio, key="barrio_input")
 
         if st.button("Enviar Denuncia"):
-            if not (descripcion and categoria and calle and barrio != "Seleccioná una localidad" and altura is not None and lat_sel and lon_sel):
+            if not (descripcion and categoria and calle and barrio != "Seleccioná una localidad" and lat_sel and lon_sel):
                 st.error("Completá todos los campos obligatorios y marcá la ubicación en el mapa.")
             else:
                 conn = get_connection()
@@ -322,7 +326,7 @@ def publicar_denuncia():
 
 # --- Vista Autoridad: Dashboard y filtros sin heatmap ---
 def ver_denuncias_autoridad():
-    st.subheader("🕵️‍♂️ Panel de denuncias (Autoridad)")
+    st.subheader("🕵️‍♂️ Panel de denuncias")
     conn = get_connection()
     df = pd.read_sql(
         """
@@ -368,6 +372,15 @@ def ver_denuncias_autoridad():
         key="filtro_localidad_autoridad"
     )
 
+    # Filtro por estado de la denuncia
+    estados = sorted(df["estado"].dropna().unique())
+    estados_sel = st.sidebar.multiselect(
+        "Estados",
+        options=estados,
+        default=estados,
+        key="filtro_estado_autoridad"
+    )
+
 
     # Orden por fecha
     orden = st.sidebar.selectbox(
@@ -380,52 +393,40 @@ def ver_denuncias_autoridad():
     # --- Aplicar filtros ---
     df_f = df[
         (df["categoria"].isin(cats)) &
-        (df["localidad"].isin(localidades_sel))
+        (df["localidad"].isin(localidades_sel)) & (df["estado"].isin(estados_sel))
     ].sort_values("fecha_hora", ascending=ascending)
 
     # Cargar imágenes vinculadas
     df_img = pd.read_sql("SELECT id_denuncia, url_imagen FROM imagen", conn)
     df_f = pd.merge(df_f, df_img, how="left", on="id_denuncia")
 
-    # — Gráfico de barras por categoría —
-    st.markdown("#### 📊 Denuncias por categoría")
-    counts_cat = df_f["categoria"] \
-        .value_counts() \
-        .rename_axis("Categoría") \
-        .reset_index(name="Cantidad")
-    st.bar_chart(counts_cat.set_index("Categoría"))
-
-    # — Gráfico de barras por barrio —
-    st.markdown("#### 🗺️ Denuncias por localidad")
-    counts_bar = df_f["localidad"] \
-        .value_counts() \
-        .rename_axis("Localidad") \
-        .reset_index(name="Cantidad")
-    st.bar_chart(counts_bar.set_index("Localidad"))
-
     # — Detalle de denuncias —
     st.markdown("#### 🚦 Detalle de denuncias")
-    df_tab = df_f[["id_denuncia","denunciante","descripcion","categoria","estado","fecha_hora"]] \
-        .rename(columns={
-            "id_denuncia":"ID",
-            "denunciante":"Denunciante",
-            "descripcion":"Descripción",
-            "categoria":"Categoría",
-            "estado":"Estado",
-            "fecha_hora":"Fecha"
-        })
-    st.dataframe(df_tab, use_container_width=True)
+    with st.expander("mostrar/ocultar", expanded=False):
+        df_tab = df_f[["id_denuncia","denunciante","descripcion","categoria","estado","fecha_hora"]] \
+            .rename(columns={
+                "id_denuncia":"ID",
+                "denunciante":"Denunciante",
+                "descripcion":"Descripción",
+                "categoria":"Categoría",
+                "estado":"Estado",
+                "fecha_hora":"Fecha"
+            })
+        df_tab.index = [""] * len(df_tab) # esto es para que no se vea la numeración de la tabla. con los ID ya es suficiente.
+        st.dataframe(df_tab, use_container_width=True)
 
     # --- Botones de ver imagen ---
-    st.markdown("#### 📸 Ver imagen adjunta")
-    id_con_imagen = df_f[df_f["url_imagen"].notnull()]["id_denuncia"].tolist()
-    if not id_con_imagen:
-        st.info("⚠️ No hay imágenes adjuntas disponibles para las denuncias filtradas.")
-    else:
-        for id_d in id_con_imagen:
-            if st.button(f"Ver imagen de denuncia #{id_d}", key=f"btn_img_{id_d}"):
-                st.session_state["imagen_a_mostrar"] = id_d
-                st.rerun()
+    st.markdown("#### 📸 Ver imagenes adjuntas")
+    with st.expander("Mostrar/ocultar", expanded=False):
+        id_con_imagen = df_f[df_f["url_imagen"].notnull()]["id_denuncia"].tolist()
+        if not id_con_imagen:
+            st.info("⚠️ No hay imágenes adjuntas disponibles para las denuncias filtradas.")
+        else:
+            for id_d in id_con_imagen:
+                if st.button(f"Ver imagen de denuncia #{id_d}", key=f"btn_img_{id_d}"):
+                    st.session_state["imagen_a_mostrar"] = id_d
+                    st.rerun()
+
 
     # --- Mostrar imagen debajo de tabla si fue seleccionada ---
     if "imagen_a_mostrar" in st.session_state:
@@ -449,24 +450,46 @@ def ver_denuncias_autoridad():
         else:
             st.error("ID no encontrado.")
         cur.close()
+def ver_estadisticas():
+    st.subheader("📊 Estadísticas de denuncias")
 
-def ver_mapa_calor():
-    st.subheader("Mapa de calor de denuncias")
     conn = get_connection()
-
-    # Traer coordenadas y categoría/localidad
-    df = pd.read_sql(
-        """
-        SELECT d.id_denuncia, d.categoria, ub.localidad, ub.latitud, ub.longitud
+    df = pd.read_sql("""
+        SELECT d.categoria, ub.localidad
         FROM denuncia d
         JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
-        WHERE ub.latitud IS NOT NULL AND ub.longitud IS NOT NULL
-        """,
-        conn
-    )
+    """, conn)
+    conn.close()
 
-    # --- Filtros en la barra lateral ---
-    st.sidebar.markdown("### Filtros del mapa")
+    # Gráfico de barras por categoría
+    st.markdown("#### Denuncias por categoría")
+    cat_counts = df["categoria"].value_counts().rename_axis("Categoría").reset_index(name="Cantidad")
+    st.bar_chart(cat_counts.set_index("Categoría"))
+
+    # Gráfico de barras por localidad
+    st.markdown("#### Denuncias por localidad")
+    loc_counts = df["localidad"].value_counts().rename_axis("Localidad").reset_index(name="Cantidad")
+    st.bar_chart(loc_counts.set_index("Localidad"))
+
+from folium.plugins import HeatMap
+from streamlit_folium import st_folium
+import folium
+
+def ver_mapa_calor():
+    st.subheader("🗺️ Mapa de calor de denuncias con actualización por zona visible")
+
+    conn = get_connection()
+    df = pd.read_sql("""
+        SELECT d.id_denuncia, d.categoria, s.estado, ub.localidad, ub.latitud, ub.longitud
+        FROM denuncia d
+        JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
+        JOIN seguimiento s ON d.id_seguimiento = s.id_seguimiento
+        WHERE ub.latitud IS NOT NULL AND ub.longitud IS NOT NULL
+    """, conn)
+
+    # Mostrar solo denuncias activas
+    df = df[df["estado"].isin(["pendiente", "en curso"])]
+
 
     categorias = sorted(df["categoria"].dropna().unique())
     categorias_sel = st.sidebar.multiselect("Categorías", categorias, default=categorias)
@@ -474,22 +497,76 @@ def ver_mapa_calor():
     localidades = sorted(df["localidad"].dropna().unique())
     localidades_sel = st.sidebar.multiselect("Localidades", localidades, default=localidades)
 
-    # --- Aplicar filtros ---
     df_f = df[
         (df["categoria"].isin(categorias_sel)) &
         (df["localidad"].isin(localidades_sel))
     ]
 
-    # --- Crear mapa ---
-    m = folium.Map(location=[-34.45, -58.91], zoom_start=12)
+    col1, col2 = st.columns([3, 2])
 
-    puntos = df_f[["latitud", "longitud"]].values.tolist()
-    if puntos:
-        HeatMap(puntos, radius=15).add_to(m)
-    else:
-        st.warning("No hay denuncias con ubicación que coincidan con los filtros.")
+    with col1:
+        m = folium.Map(location=[-34.45, -58.91], zoom_start=12)
+        HeatMap(df_f[["latitud", "longitud"]].values.tolist(), radius=15).add_to(m)
+        map_output = st_folium(m, height=600, returned_objects=["bounds"])
 
-    st_folium(m, height=600)
+    with col2:
+        st.markdown("### 🔄 Actualizar estado")
+        nuevo_estado = st.selectbox("Seleccionar nuevo estado", ["pendiente", "en curso", "resuelto"])
+
+        if map_output and "bounds" in map_output:
+            bounds = map_output["bounds"]
+            south = bounds["_southWest"]["lat"]
+            west  = bounds["_southWest"]["lng"]
+            north = bounds["_northEast"]["lat"]
+            east  = bounds["_northEast"]["lng"]
+
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT COUNT(*)
+                FROM denuncia d
+                JOIN ubicacion u ON d.id_ubicacion = u.id_ubicacion
+                WHERE u.latitud BETWEEN %s AND %s
+                  AND u.longitud BETWEEN %s AND %s
+                  AND d.categoria = ANY(%s)
+                  AND u.localidad = ANY(%s)
+            """, (
+                south, north, west, east,
+                categorias_sel,
+                localidades_sel
+            ))
+            cantidad = cur.fetchone()[0]
+
+            if cantidad > 0:
+                st.info(f"Se actualizarán {cantidad} denuncias dentro del área visible del mapa.")
+                if st.button("Actualizar denuncias visibles"):
+                    cur.execute("""
+                        UPDATE seguimiento
+                        SET estado = %s
+                        WHERE id_seguimiento IN (
+                            SELECT d.id_seguimiento
+                            FROM denuncia d
+                            JOIN ubicacion u ON d.id_ubicacion = u.id_ubicacion
+                            WHERE u.latitud BETWEEN %s AND %s
+                              AND u.longitud BETWEEN %s AND %s
+                              AND d.categoria = ANY(%s)
+                              AND u.localidad = ANY(%s)
+                        )
+                    """, (
+                        nuevo_estado,
+                        south, north, west, east,
+                        categorias_sel,
+                        localidades_sel
+                    ))
+                    conn.commit()
+                    st.success("✅ Estado actualizado correctamente.")
+            else:
+                st.warning("No hay denuncias visibles con los filtros actuales.")
+            cur.close()
+        else:
+            st.warning("📍 Mové o hacé zoom en el mapa para activar la detección del área.")
+
+    conn.close()
+
 
 
 # --- Flujo principal ---
@@ -519,8 +596,8 @@ if st.session_state.logged_in:
     else:  # autoridad
         choice = option_menu(
             menu_title=None,
-            options=["Ver denuncias", "Mapa de calor"],
-            icons=["clipboard-check", "map"],
+            options=["Ver denuncias", "Ver estadísticas", "Mapa de calor"],
+            icons=["clipboard-check", "bar-chart-line", "map"],
             default_index=0,
             orientation="vertical",
             key="menu_autoridad"
@@ -529,6 +606,8 @@ if st.session_state.logged_in:
             ver_denuncias_autoridad()
         elif choice == "Mapa de calor":
             ver_mapa_calor()
+        elif choice == "Ver estadísticas":
+            ver_estadisticas()
 
 else:
     pantalla_login()
