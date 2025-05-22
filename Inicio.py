@@ -201,61 +201,126 @@ def mostrar_mi_cuenta():
 
 # --- Vista Vecino: Publicar denuncia ---
 def publicar_denuncia():
-    st.subheader("📢 Publicar nueva denuncia")
-    descripcion = st.text_area("Descripción del problema")
-    categoria   = st.selectbox("Categoría", ["Tránsito","Basura","Señalización","Delito","Otro"])
-    imagen      = st.file_uploader("Subir imagen (opcional)", type=["jpg","jpeg","png"])
-    calle       = st.selectbox("Calle", CALLES_PILAR)
-    altura      = st.number_input("Altura", min_value=0)
-    barrio      = st.selectbox("Barrio", Barrios)
+    import requests
+    from streamlit_folium import st_folium
+    import folium
 
+    st.subheader("📢 Publicar nueva denuncia")
+
+    descripcion = st.text_area("Descripción del problema")
+    categoria = st.selectbox("Categoría", ["Tránsito", "Basura", "Señalización", "Delito", "Otro"])
+    imagen = st.file_uploader("Subir imagen (opcional)", type=["jpg", "jpeg", "png"])
+
+    # --- Inicializar valores en session_state si no existen
+    for campo in ["calle_auto", "altura_auto", "barrio_auto"]:
+        if campo not in st.session_state:
+            st.session_state[campo] = None
+
+    # --- Función de reverse geocoding
+    def reverse_geocode_osm(lat, lon):
+        url = "https://nominatim.openstreetmap.org/reverse"
+        params = {"lat": lat, "lon": lon, "format": "json"}
+        headers = {"User-Agent": "MiReporteApp/1.0"}
+        try:
+            res = requests.get(url, params=params, headers=headers).json()
+            calle = res.get("address", {}).get("road")
+            altura = res.get("address", {}).get("house_number")
+            barrio = res.get("address", {}).get("suburb") or res.get("address", {}).get("city_district")
+            return calle, altura, barrio
+        except:
+            return None, None, None
+
+    # --- Mapa
+    st.markdown("### 📍 Marcar ubicación y completar dirección")
+
+    col1, col2 = st.columns([2, 3])
+
+    with col1:
+        m = folium.Map(location=[-34.45, -58.91], zoom_start=13)
+        m.add_child(folium.LatLngPopup())
+        output = st_folium(m, height=350)
+
+    lat_sel, lon_sel = None, None
+    calle_auto, altura_auto, barrio_auto = None, None, None
+
+    if output["last_clicked"]:
+        lat_sel = output["last_clicked"]["lat"]
+        lon_sel = output["last_clicked"]["lng"]
+        st.success(f"Ubicación marcada: {lat_sel:.5f}, {lon_sel:.5f}")
+
+        calle_auto, altura_auto, barrio_auto = reverse_geocode_osm(lat_sel, lon_sel)
+        if altura_auto:
+            altura_auto = str(altura_auto)
+    else:
+        st.warning("📍 Marcá la ubicación en el mapa para completar la dirección.")
+        return
+
+    with col2:
+        st.markdown("### 📝 Ubicación del problema")
+        st.text_input("Calle detectada automáticamente", value=calle_auto or "", disabled=True)
+        calle = calle_auto
+        altura_str = st.text_input("Altura", value=altura_auto or "")
+        opciones_barrios = ["Seleccioná una localidad"] + Barrios
+        if barrio_auto in Barrios:
+            idx_barrio = Barrios.index(barrio_auto) + 1
+        else:
+            idx_barrio = 0
+        barrio = st.selectbox("Localidad", opciones_barrios, index=idx_barrio)
+
+    # --- Enviar
     if st.button("Enviar Denuncia"):
-        if not (descripcion and categoria and calle and altura and barrio):
-            st.error("Completá todos los campos (imagen opcional).")
+        if not (descripcion and categoria and calle and barrio != "Seleccioná una localidad" and altura is not None and lat_sel and lon_sel):
+            st.error("Completá todos los campos obligatorios y marcá la ubicación en el mapa.")
             return
 
         conn = get_connection()
-        cur  = conn.cursor()
-        # Ubicación
+        cur = conn.cursor()
+
         cur.execute(
-            "INSERT INTO Ubicacion (calle, altura, barrio) VALUES (%s,%s,%s) RETURNING id_ubicacion",
-            (calle, altura, barrio)
+            "INSERT INTO ubicacion (calle, altura, barrio, latitud, longitud) VALUES (%s, %s, %s, %s, %s) RETURNING id_ubicacion",
+            (calle, altura, barrio, lat_sel, lon_sel)
         )
         id_ub = cur.fetchone()[0]
-        # Seguimiento
+
         cur.execute(
-            "INSERT INTO Seguimiento (id_usuario, estado) VALUES (%s,'pendiente') RETURNING id_seguimiento",
+            "INSERT INTO seguimiento (id_usuario, estado) VALUES (%s, 'pendiente') RETURNING id_seguimiento",
             (st.session_state.usuario["id"],)
         )
         id_seg = cur.fetchone()[0]
-        # Denuncia
+
         now = datetime.now()
         cur.execute(
             """
-            INSERT INTO Denuncia
-              (id_usuario, id_ubicacion, categoria, descripcion, fecha_hora, id_seguimiento)
-            VALUES (%s,%s,%s,%s,%s,%s) RETURNING id_denuncia
+            INSERT INTO denuncia (id_usuario, id_ubicacion, categoria, descripcion, fecha_hora, id_seguimiento)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id_denuncia
             """,
             (st.session_state.usuario["id"], id_ub, categoria, descripcion, now, id_seg)
         )
         id_den = cur.fetchone()[0]
-        # Imagen opcional
+
         if imagen:
-            img_id   = str(uuid4())
+            img_id = str(uuid4())
             img_path = f"imagenes/{img_id}.png"
             os.makedirs("imagenes", exist_ok=True)
             with open(img_path, "wb") as f:
                 f.write(imagen.read())
             cur.execute(
                 """
-                INSERT INTO Imagen (id_denuncia, url_imagen, fecha_subida, descripcion)
-                VALUES (%s,%s,%s,%s)
+                INSERT INTO imagen (id_denuncia, url_imagen, fecha_subida, descripcion)
+                VALUES (%s, %s, %s, %s)
                 """,
                 (id_den, img_path, now, "Imagen de denuncia")
             )
+
         conn.commit()
         cur.close()
-        st.success("Denuncia enviada correctamente.")
+        st.success("✅ Denuncia enviada correctamente.")
+        st.session_state.calle_auto = None
+        st.session_state.altura_auto = None
+        st.session_state.barrio_auto = None
+
+
+
 
 # --- Vista Autoridad: Dashboard y filtros sin heatmap ---
 def ver_denuncias_autoridad():
