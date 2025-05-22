@@ -5,6 +5,9 @@ from datetime import datetime
 from uuid import uuid4
 import os
 import pydeck as pdk
+import folium
+from folium.plugins import HeatMap
+from streamlit_folium import st_folium
 
 from shared import get_connection, verificar_usuario, registrar_usuario
 from streamlit_option_menu import option_menu
@@ -186,13 +189,15 @@ def mostrar_mi_cuenta():
     df = df[df["Categoría"].isin(cats)]
 
     # 4) Ordenar por fecha
+    
     orden = st.sidebar.selectbox(
         "Ordenar por fecha",
-        ["Más recientes primero","Más antiguas primero"],
+        ["Más antiguas primero","Más recientes primero"],
         key="orden_fecha_vecino"
     )
     ascending = True if orden == "Más antiguas primero" else False
     df = df.sort_values("Fecha", ascending=ascending)
+
 
     # 5) Muestro la tabla sin índice
     df.index = [""] * len(df)
@@ -208,7 +213,7 @@ def publicar_denuncia():
     st.subheader("📢 Publicar nueva denuncia")
 
     descripcion = st.text_area("Descripción del problema")
-    categoria = st.selectbox("Categoría", ["Tránsito", "Basura", "Señalización", "Delito", "Otro"])
+    categoria = st.selectbox("Categoría", ["Tránsito", "Basura", "Señalización", "Delito", "Ruidos molestos", "Vandalismo", "Otro"])
     imagen = st.file_uploader("Subir imagen (opcional)", type=["jpg", "jpeg", "png"])
 
     st.markdown("### 📍 Marcar ubicación y completar dirección")
@@ -271,7 +276,7 @@ def publicar_denuncia():
                 cur = conn.cursor()
 
                 cur.execute(
-                    "INSERT INTO ubicacion (calle, altura, barrio, latitud, longitud) VALUES (%s, %s, %s, %s, %s) RETURNING id_ubicacion",
+                    "INSERT INTO ubicacion (calle, altura, localidad, latitud, longitud) VALUES (%s, %s, %s, %s, %s) RETURNING id_ubicacion",
                     (calle, altura, barrio, lat_sel, lon_sel)
                 )
                 id_ub = cur.fetchone()[0]
@@ -325,37 +330,62 @@ def ver_denuncias_autoridad():
                u.nombre   AS denunciante,
                d.descripcion,
                d.categoria,
-               ub.barrio,
+               ub.localidad,
                s.estado,
                d.fecha_hora
-          FROM Denuncia d
-          JOIN Usuario u ON d.id_usuario    = u.id_usuario
-          JOIN Ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
-          JOIN Seguimiento s ON d.id_seguimiento = s.id_seguimiento
+          FROM denuncia d
+          JOIN usuario u ON d.id_usuario    = u.id_usuario
+          JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
+          JOIN seguimiento s ON d.id_seguimiento = s.id_seguimiento
          ORDER BY d.fecha_hora DESC
         """,
         conn
     )
     df["fecha_hora"] = pd.to_datetime(df["fecha_hora"])
 
-    # — SOLO FILTRO POR CATEGORÍA —
-    st.sidebar.markdown("### Filtro (Autoridad)")
+    # --- Filtros en la barra lateral ---
+    st.sidebar.markdown("### Filtros")
+
+    # Filtro por categoría
     cats = st.sidebar.multiselect(
         "Categorías",
         options=df["categoria"].unique(),
         default=list(df["categoria"].unique()),
-        key="f_auth_cat"
+        key="filtro_categoria_autoridad"
     )
-    df_f = df[df["categoria"].isin(cats)]
 
-    # — ORDEN POR FECHA ASC/DESC —
+    # Filtro por localidad
+    localidades = sorted(df["localidad"].dropna().unique())
+
+    # Inicializar selección por defecto si no está en session_state
+    if "filtro_localidad_autoridad" not in st.session_state:
+        st.session_state["filtro_localidad_autoridad"] = localidades
+
+    localidades_sel = st.sidebar.multiselect(
+        "Seleccioná una o más localidades",
+        options=localidades,
+        default=st.session_state["filtro_localidad_autoridad"],
+        key="filtro_localidad_autoridad"
+    )
+
+
+    # Orden por fecha
     orden = st.sidebar.selectbox(
         "Ordenar por fecha",
-        ["Más recientes primero", "Más antiguas primero"],
-        key="f_auth_orden"
+        ["Más antiguas primero", "Más recientes primero"],
+        key="orden_fecha_autoridad"
     )
     ascending = True if orden == "Más antiguas primero" else False
-    df_f = df_f.sort_values("fecha_hora", ascending=ascending)
+
+    # --- Aplicar filtros ---
+    df_f = df[
+        (df["categoria"].isin(cats)) &
+        (df["localidad"].isin(localidades_sel))
+    ].sort_values("fecha_hora", ascending=ascending)
+
+    # Cargar imágenes vinculadas
+    df_img = pd.read_sql("SELECT id_denuncia, url_imagen FROM imagen", conn)
+    df_f = pd.merge(df_f, df_img, how="left", on="id_denuncia")
 
     # — Gráfico de barras por categoría —
     st.markdown("#### 📊 Denuncias por categoría")
@@ -366,14 +396,14 @@ def ver_denuncias_autoridad():
     st.bar_chart(counts_cat.set_index("Categoría"))
 
     # — Gráfico de barras por barrio —
-    st.markdown("#### 🗺️ Denuncias por barrio")
-    counts_bar = df_f["barrio"] \
+    st.markdown("#### 🗺️ Denuncias por localidad")
+    counts_bar = df_f["localidad"] \
         .value_counts() \
-        .rename_axis("Barrio") \
+        .rename_axis("Localidad") \
         .reset_index(name="Cantidad")
-    st.bar_chart(counts_bar.set_index("Barrio"))
+    st.bar_chart(counts_bar.set_index("Localidad"))
 
-    # — Detalle y actualización de estado —
+    # — Detalle de denuncias —
     st.markdown("#### 🚦 Detalle de denuncias")
     df_tab = df_f[["id_denuncia","denunciante","descripcion","categoria","estado","fecha_hora"]] \
         .rename(columns={
@@ -386,6 +416,25 @@ def ver_denuncias_autoridad():
         })
     st.dataframe(df_tab, use_container_width=True)
 
+    # --- Botones de ver imagen ---
+    st.markdown("#### 📸 Ver imagen adjunta")
+    id_con_imagen = df_f[df_f["url_imagen"].notnull()]["id_denuncia"].tolist()
+    if not id_con_imagen:
+        st.info("⚠️ No hay imágenes adjuntas disponibles para las denuncias filtradas.")
+    else:
+        for id_d in id_con_imagen:
+            if st.button(f"Ver imagen de denuncia #{id_d}", key=f"btn_img_{id_d}"):
+                st.session_state["imagen_a_mostrar"] = id_d
+                st.rerun()
+
+    # --- Mostrar imagen debajo de tabla si fue seleccionada ---
+    if "imagen_a_mostrar" in st.session_state:
+        row_img = df_f[df_f["id_denuncia"] == st.session_state["imagen_a_mostrar"]]
+        if not row_img.empty:
+            st.image(row_img.iloc[0]["url_imagen"], caption=f"Imagen denuncia #{st.session_state['imagen_a_mostrar']}", use_container_width=True)
+            st.markdown("---")
+
+    # — Actualizar estado —
     st.subheader("Actualizar estado")
     id_mod = st.number_input("ID denuncia", int(df_tab["ID"].min()), step=1, key="upd_id")
     nuevo  = st.selectbox("Nuevo estado", ["pendiente","en curso","resuelto"], key="upd_est")
@@ -400,6 +449,7 @@ def ver_denuncias_autoridad():
         else:
             st.error("ID no encontrado.")
         cur.close()
+
 
 
 # --- Flujo principal ---
