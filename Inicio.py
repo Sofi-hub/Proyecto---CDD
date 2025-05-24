@@ -8,6 +8,7 @@ import pydeck as pdk
 import folium
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
+import plotly.express as px
 
 from shared import get_connection, verificar_usuario, registrar_usuario
 from streamlit_option_menu import option_menu
@@ -402,7 +403,7 @@ def ver_denuncias_autoridad():
 
     # — Detalle de denuncias —
     st.markdown("#### 🚦 Detalle de denuncias")
-    with st.expander("mostrar/ocultar", expanded=False):
+    with st.expander("Mostrar/Ocultar", expanded=False):
         df_tab = df_f[["id_denuncia","denunciante","descripcion","categoria","estado","fecha_hora"]] \
             .rename(columns={
                 "id_denuncia":"ID",
@@ -416,24 +417,25 @@ def ver_denuncias_autoridad():
         st.dataframe(df_tab, use_container_width=True)
 
     # --- Botones de ver imagen ---
-    st.markdown("#### 📸 Ver imagenes adjuntas")
-    with st.expander("Mostrar/ocultar", expanded=False):
-        id_con_imagen = df_f[df_f["url_imagen"].notnull()]["id_denuncia"].tolist()
-        if not id_con_imagen:
-            st.info("⚠️ No hay imágenes adjuntas disponibles para las denuncias filtradas.")
+    st.markdown("#### 📸 Ver imagen adjunta")
+
+    id_img_input = st.number_input("Ingresá el ID de una denuncia",min_value=1, step=1, key="ver_img_id")
+
+    if st.button("Mostrar imagen"):
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT url_imagen FROM imagen WHERE id_denuncia = %s",
+            (id_img_input,)
+        )
+        r = cur.fetchone()
+        cur.close()
+
+        if r and r[0]:
+            st.image(r[0], caption=f"Imagen asociada a la denuncia #{id_img_input}", use_container_width=True)
         else:
-            for id_d in id_con_imagen:
-                if st.button(f"Ver imagen de denuncia #{id_d}", key=f"btn_img_{id_d}"):
-                    st.session_state["imagen_a_mostrar"] = id_d
-                    st.rerun()
+            st.info("📭 Esta denuncia no tiene una imagen adjunta.")
 
-
-    # --- Mostrar imagen debajo de tabla si fue seleccionada ---
-    if "imagen_a_mostrar" in st.session_state:
-        row_img = df_f[df_f["id_denuncia"] == st.session_state["imagen_a_mostrar"]]
-        if not row_img.empty:
-            st.image(row_img.iloc[0]["url_imagen"], caption=f"Imagen denuncia #{st.session_state['imagen_a_mostrar']}", use_container_width=True)
-            st.markdown("---")
 
     # — Actualizar estado —
     st.subheader("Actualizar estado")
@@ -455,21 +457,75 @@ def ver_estadisticas():
 
     conn = get_connection()
     df = pd.read_sql("""
-        SELECT d.categoria, ub.localidad
+        SELECT d.id_denuncia,
+            d.categoria,
+            ub.localidad,
+            s.estado,
+            d.fecha_hora
         FROM denuncia d
         JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
+        JOIN seguimiento s ON d.id_seguimiento = s.id_seguimiento
     """, conn)
     conn.close()
 
     # Gráfico de barras por categoría
     st.markdown("#### Denuncias por categoría")
+
     cat_counts = df["categoria"].value_counts().rename_axis("Categoría").reset_index(name="Cantidad")
-    st.bar_chart(cat_counts.set_index("Categoría"))
+
+    fig = px.bar(
+        cat_counts,
+        x="Categoría",
+        y="Cantidad",
+        color="Categoría",  # Cada categoría tiene color distinto
+        color_discrete_sequence=px.colors.qualitative.Pastel  # Paleta de colores suaves
+    )
+    fig.update_layout(
+    yaxis=dict(
+        tickmode="linear",  
+        tick0=0,            
+        dtick=1             
+        )
+    )
+
+    fig.update_layout(showlegend=False)
+    st.plotly_chart(fig)
 
     # Gráfico de barras por localidad
-    st.markdown("#### Denuncias por localidad")
-    loc_counts = df["localidad"].value_counts().rename_axis("Localidad").reset_index(name="Cantidad")
-    st.bar_chart(loc_counts.set_index("Localidad"))
+    st.markdown("#### Denuncias por localidad y categoría")
+
+    # Agrupar por localidad y categoría
+    loc_cat_counts = df.groupby(["localidad", "categoria"]).size().reset_index(name="Cantidad")
+
+    # Crear gráfico de barras apiladas
+    fig = px.bar(
+        loc_cat_counts,
+        x="localidad",
+        y="Cantidad",
+        color="categoria",
+        labels={"localidad": "Localidad", "categoria": "Categoría", "Cantidad": "Cantidad"},
+        color_discrete_sequence=px.colors.qualitative.Pastel  # Paleta linda y suave
+    )
+    fig.update_layout(
+    yaxis=dict(
+        tickmode="linear",  
+        tick0=0,            
+        dtick=1             
+        )
+    )
+
+    # Opcional: ordenar por cantidad total descendente
+    fig.update_layout(
+        xaxis={'categoryorder': 'total descending'},
+        barmode='stack'
+    )
+
+    st.plotly_chart(fig)
+
+    # Piechart según estado de la denuncia
+    st.markdown("### Distribución porcentual por estado de las denuncias")
+    st.plotly_chart(px.pie(df, names="estado"))
+
 
 from folium.plugins import HeatMap
 from streamlit_folium import st_folium
