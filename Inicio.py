@@ -362,14 +362,12 @@ def ver_denuncias_autoridad():
     # Filtro por localidad
     localidades = sorted(df["localidad"].dropna().unique())
 
-    # Inicializar selección por defecto si no está en session_state
-    if "filtro_localidad_autoridad" not in st.session_state:
-        st.session_state["filtro_localidad_autoridad"] = localidades
+    
 
     localidades_sel = st.sidebar.multiselect(
         "Seleccioná una o más localidades",
         options=localidades,
-        default=st.session_state["filtro_localidad_autoridad"],
+        default=localidades,
         key="filtro_localidad_autoridad"
     )
 
@@ -411,11 +409,12 @@ def ver_denuncias_autoridad():
                 "descripcion":"Descripción",
                 "categoria":"Categoría",
                 "estado":"Estado",
-                "fecha_hora":"Fecha"
+                "fecha_hora":"Fecha" 
             })
         df_tab.index = [""] * len(df_tab) # esto es para que no se vea la numeración de la tabla. con los ID ya es suficiente.
-        st.dataframe(df_tab, use_container_width=True)
-
+        st.dataframe(df_tab, use_container_width=True, hide_index=True)
+        if st.button("🔄 Actualizar tabla"):
+            st.rerun()
     # --- Botones de ver imagen ---
     st.markdown("#### 📸 Ver imagen adjunta")
 
@@ -536,16 +535,15 @@ def ver_mapa_calor():
 
     conn = get_connection()
     df = pd.read_sql("""
-        SELECT d.id_denuncia, d.categoria, s.estado, ub.localidad, ub.latitud, ub.longitud
+        SELECT d.id_denuncia, d.categoria, s.estado, d.id_seguimiento,
+               ub.localidad, ub.latitud, ub.longitud
         FROM denuncia d
         JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
         JOIN seguimiento s ON d.id_seguimiento = s.id_seguimiento
         WHERE ub.latitud IS NOT NULL AND ub.longitud IS NOT NULL
     """, conn)
 
-    # Mostrar solo denuncias activas
     df = df[df["estado"].isin(["pendiente", "en curso"])]
-
 
     categorias = sorted(df["categoria"].dropna().unique())
     categorias_sel = st.sidebar.multiselect("Categorías", categorias, default=categorias)
@@ -558,12 +556,33 @@ def ver_mapa_calor():
         (df["localidad"].isin(localidades_sel))
     ]
 
+    # Inicializar estado de zoom y centro del mapa
+    if "map_center" not in st.session_state:
+        st.session_state.map_center = [-34.45, -58.91]
+    if "map_zoom" not in st.session_state:
+        st.session_state.map_zoom = 12
+
     col1, col2 = st.columns([3, 2])
 
     with col1:
-        m = folium.Map(location=[-34.45, -58.91], zoom_start=12)
+        # Mapa con centro y zoom desde el estado
+        m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
         HeatMap(df_f[["latitud", "longitud"]].values.tolist(), radius=15).add_to(m)
-        map_output = st_folium(m, height=600, returned_objects=["bounds"])
+
+        map_output = st_folium(m, height=600, returned_objects=["bounds", "last_clicked"])
+
+        # Si se hizo clic, actualizar centro y hacer zoom
+        if map_output and "last_clicked" in map_output and map_output["last_clicked"]:
+            click = map_output["last_clicked"]
+            st.session_state.map_center = [click["lat"], click["lng"]]
+            st.session_state.map_zoom = 16
+            st.rerun()
+
+        # Botón para volver a vista general
+        if st.button("🔙 Volver al mapa general"):
+            st.session_state.map_center = [-34.45, -58.91]
+            st.session_state.map_zoom = 12
+            st.rerun()
 
     with col2:
         st.markdown("### 🔄 Actualizar estado")
@@ -594,7 +613,7 @@ def ver_mapa_calor():
 
             if cantidad > 0:
                 st.info(f"Se actualizarán {cantidad} denuncias dentro del área visible del mapa.")
-                if st.button("Actualizar denuncias visibles"):
+                if st.button("✅ Actualizar denuncias visibles"):
                     cur.execute("""
                         UPDATE seguimiento
                         SET estado = %s
@@ -619,7 +638,7 @@ def ver_mapa_calor():
                 st.warning("No hay denuncias visibles con los filtros actuales.")
             cur.close()
         else:
-            st.warning("📍 Mové o hacé zoom en el mapa para activar la detección del área.")
+            st.warning("📍 Mové, acercate o hacé clic en el mapa para seleccionar una zona.")
 
     conn.close()
 
