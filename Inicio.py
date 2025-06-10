@@ -338,7 +338,7 @@ def ver_denuncias_autoridad():
                ub.localidad,
                s.estado,
                d.fecha_hora
-          FROM denuncia d
+          FROM denuncia d 
           JOIN usuario u ON d.id_usuario    = u.id_usuario
           JOIN ubicacion ub ON d.id_ubicacion = ub.id_ubicacion
           JOIN seguimiento s ON d.id_seguimiento = s.id_seguimiento
@@ -472,12 +472,25 @@ def ver_estadisticas():
 
     cat_counts = df["categoria"].value_counts().rename_axis("Categoría").reset_index(name="Cantidad")
 
+    categorias_colores = {
+    "Tránsito": "#e74c3c",
+    "Obstrucción vía pública": "#f39c12",
+    "Iluminación": "#f1c40f",
+    "Basura": "#2ecc71",
+    "Señalización": "#3498db",
+    "Delito": "#9b59b6",
+    "Ruidos molestos": "#34495e",
+    "Vandalismo": "#e67e22",
+    "Deterioro vial": "#1abc9c",
+    "Otro": "#7f8c8d"
+    }
+
     fig = px.bar(
         cat_counts,
         x="Categoría",
         y="Cantidad",
         color="Categoría",  # Cada categoría tiene color distinto
-        color_discrete_sequence=px.colors.qualitative.Pastel  # Paleta de colores suaves
+        color_discrete_map= categorias_colores  # Paleta de colores suaves
     )
     fig.update_layout(
     yaxis=dict(
@@ -503,7 +516,7 @@ def ver_estadisticas():
         y="Cantidad",
         color="categoria",
         labels={"localidad": "Localidad", "categoria": "Categoría", "Cantidad": "Cantidad"},
-        color_discrete_sequence=px.colors.qualitative.Pastel  # Paleta linda y suave
+        color_discrete_map=categorias_colores  # Paleta linda y suave
     )
     fig.update_layout(
     yaxis=dict(
@@ -568,6 +581,24 @@ def ver_mapa_calor():
         # Mapa con centro y zoom desde el estado
         m = folium.Map(location=st.session_state.map_center, zoom_start=st.session_state.map_zoom)
         HeatMap(df_f[["latitud", "longitud"]].values.tolist(), radius=15).add_to(m)
+        colores_categorias = {
+            "Tránsito": "red",
+            "Obstrucción vía pública": "orange",
+            "Iluminación": "lightgray",
+            "Basura": "green",
+            "Señalización": "blue",
+            "Delito": "purple",
+            "Ruidos molestos": "gray",
+            "Vandalismo": "darkred",
+            "Deterioro vial": "cadetblue",
+            "Otro": "black"
+        }
+        for _, row in df_f.iterrows():
+            folium.Marker(
+                location=[row["latitud"], row["longitud"]],
+                popup=f"<b>Categoría:</b> {row['categoria']}<br><b>Estado:</b> {row['estado']}",
+                icon=folium.Icon(color=colores_categorias.get(row["categoria"], "black"), icon="info-sign")
+            ).add_to(m)
 
         map_output = st_folium(m, height=600, returned_objects=["bounds", "last_clicked"])
 
@@ -639,7 +670,29 @@ def ver_mapa_calor():
             cur.close()
         else:
             st.warning("📍 Mové, acercate o hacé clic en el mapa para seleccionar una zona.")
+        st.markdown("### 🗂️ Referencia de categorías")
 
+        colores_categorias = {
+            "Tránsito": "red",
+            "Obstrucción vía pública": "orange",
+            "Iluminación": "lightgray",
+            "Basura": "green",
+            "Señalización": "blue",
+            "Delito": "purple",
+            "Ruidos molestos": "gray",
+            "Vandalismo": "darkred",
+            "Deterioro vial": "cadetblue",
+            "Otro": "black"
+        }
+
+        for cat, color in colores_categorias.items():
+            st.markdown(
+                f"<div style='display: flex; align-items: center;'>"
+                f"<div style='width: 15px; height: 15px; background-color: {color}; "
+                f"margin-right: 8px; border: 1px solid #000;'></div>"
+                f"{cat}</div>",
+                unsafe_allow_html=True
+            )
     conn.close()
 
 
