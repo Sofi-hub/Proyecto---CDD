@@ -1,5 +1,6 @@
 streamlit
 streamlit_folium
+plotly
 psycopg2-binary
 python-dotenv
 pandas
